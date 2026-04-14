@@ -207,6 +207,11 @@
         </div>
     </div>
 
+    <!-- Virtual Joystick untuk Touchscreen -->
+    <div id="joystick-container" class="fixed bottom-8 left-8 w-32 h-32 bg-slate-800 bg-opacity-40 rounded-full border-4 border-slate-300 border-opacity-50 hidden z-30 shadow-2xl" style="touch-action: none; pointer-events: auto;">
+        <div id="joystick-knob" class="absolute top-1/2 left-1/2 w-16 h-16 bg-white bg-opacity-90 rounded-full shadow-lg transform -translate-x-1/2 -translate-y-1/2"></div>
+    </div>
+
     <div id="toast" class="toast font-title tracking-wide">Kerja Bagus!</div>
 
     <canvas id="gameCanvas"></canvas>
@@ -248,6 +253,62 @@
         let activeHouses = [];
         let currentQuestion = null;
 
+        // Variabel & Logika Virtual Joystick
+        const joystickContainer = document.getElementById('joystick-container');
+        const joystickKnob = document.getElementById('joystick-knob');
+        let joystick = { active: false, x: 0, y: 0 };
+        let joyCenter = { x: 0, y: 0 };
+        const maxRadius = 40; // Batas tarikan maksimal analog
+
+        function initJoystick() {
+            joystickContainer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                joystick.active = true;
+                const rect = joystickContainer.getBoundingClientRect();
+                joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                updateJoystick(e.targetTouches[0]);
+            }, {passive: false});
+
+            joystickContainer.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!joystick.active) return;
+                updateJoystick(e.targetTouches[0]);
+            }, {passive: false});
+
+            const endJoy = (e) => {
+                e.preventDefault();
+                joystick.active = false;
+                joystick.x = 0; joystick.y = 0;
+                joystickKnob.style.transform = `translate(-50%, -50%)`;
+            };
+            joystickContainer.addEventListener('touchend', endJoy);
+            joystickContainer.addEventListener('touchcancel', endJoy);
+        }
+
+        function updateJoystick(touch) {
+            let dx = touch.clientX - joyCenter.x;
+            let dy = touch.clientY - joyCenter.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > maxRadius) {
+                dx = (dx / distance) * maxRadius;
+                dy = (dy / distance) * maxRadius;
+            }
+
+            joystick.x = dx / maxRadius;
+            joystick.y = dy / maxRadius;
+
+            joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        }
+
+        function checkTouchScreenAndShowJoystick() {
+            // Tampilkan joystick hanya jika layar mendukung sentuhan
+            if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                joystickContainer.classList.remove('hidden');
+                initJoystick();
+            }
+        }
+
         function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         window.addEventListener('resize', resizeCanvas); resizeCanvas();
 
@@ -285,15 +346,27 @@
             }
             update() {
                 let dx = 0; let dy = 0;
+                
+                // Keyboard Input
                 if (keys.w || keys.ArrowUp) dy -= 1;
                 if (keys.s || keys.ArrowDown) dy += 1;
                 if (keys.a || keys.ArrowLeft) dx -= 1;
                 if (keys.d || keys.ArrowRight) dx += 1;
 
-                if (dx !== 0 && dy !== 0) {
-                    let length = Math.sqrt(dx*dx + dy*dy);
-                    dx /= length; dy /= length;
+                // Joystick Input (Touchscreen)
+                if (joystick.active) {
+                    dx += joystick.x;
+                    dy += joystick.y;
                 }
+
+                // Normalisasi kecepatan (agar tidak lebih cepat jika bergerak diagonal)
+                if (dx !== 0 || dy !== 0) {
+                    let length = Math.sqrt(dx*dx + dy*dy);
+                    if (length > 1) {
+                        dx /= length; dy /= length;
+                    }
+                }
+                
                 this.x += dx * this.speed; this.y += dy * this.speed;
                 if(dx !== 0 || dy !== 0) this.angle = Math.atan2(dy, dx);
                 this.x = Math.max(this.width/2, Math.min(WORLD_SIZE - this.width/2, this.x));
@@ -498,6 +571,8 @@
             document.getElementById('hud').classList.add('flex');
             document.getElementById('player-timer-container').classList.add('hidden');
             
+            checkTouchScreenAndShowJoystick(); // <--- Menambahkan pengecekan joystick
+
             player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2);
             generateCity(); updateHUD(); assignNewMission();
             isGameRunning = true; gameLoop();
@@ -672,6 +747,8 @@
             document.getElementById('hud').classList.add('flex');
             document.getElementById('player-timer-container').classList.remove('hidden');
             
+            checkTouchScreenAndShowJoystick(); // <--- Menambahkan pengecekan joystick
+
             player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2);
             generateCity(); updateHUD(); assignNewMission();
             
@@ -682,6 +759,8 @@
             isGameRunning = false;
             cancelAnimationFrame(animationId);
             
+            joystickContainer.classList.add('hidden'); // Sembunyikan joystick saat kalah/selesai
+
             document.getElementById('game-over-title').innerText = reasonTitle || "Permainan Selesai!";
             document.getElementById('final-score-text').innerText = `Total Paket Diantar: ${player.score}`;
             
@@ -700,6 +779,9 @@
         window.returnToMenu = () => {
             if(peer) { peer.destroy(); peer = null; }
             isMultiplayer = false; isAdmin = false;
+            
+            joystickContainer.classList.add('hidden'); // Sembunyikan joystick kembali ke menu
+            
             document.getElementById('game-over').classList.add('opacity-0');
             setTimeout(() => {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
