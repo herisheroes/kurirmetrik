@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kurir Metrik: Antaran Dimensi (Multiplayer)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #4ade80;
+            font-family: 'Nunito', sans-serif;
+            touch-action: none;
+        }
+        h1, .font-title { font-family: 'Fredoka One', cursive; }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop { animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .toast {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            opacity: 0;
+            transition: opacity 0.3s, top 0.3s;
+            pointer-events: none;
+            z-index: 40;
+        }
+        .toast.show { opacity: 1; top: 15%; }
+        .toast-success { background-color: #22c55e; border: 4px solid #166534; box-shadow: 0 10px 25px rgba(34,197,94,0.5); }
+        .toast-error { background-color: #ef4444; border: 4px solid #991b1b; box-shadow: 0 10px 25px rgba(239,68,68,0.5); }
+
+        /* Custom Scrollbar for Admin Table */
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body>
+
+    <!-- CONTAINER SEMUA MENU UI -->
+    <div id="ui-layer" class="fixed inset-0 z-50 pointer-events-none">
+        
+        <!-- MAIN MENU -->
+        <div id="menu-main" class="absolute inset-0 bg-orange-500 flex flex-col items-center justify-center transition-opacity duration-500 pointer-events-auto">
+            <div class="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-2xl border-4 border-orange-300 relative overflow-hidden">
+                <div class="absolute -top-10 -right-10 text-9xl opacity-20">🍕</div>
+                <h1 class="text-5xl text-orange-600 mb-2 drop-shadow-md relative z-10">Kurir Metrik</h1>
+                <h2 class="text-2xl text-gray-700 font-title mb-8 relative z-10">Antaran Dimensi</h2>
+                
+                <div class="flex flex-col gap-4 relative z-10">
+                    <button onclick="window.startSinglePlayer()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-10 rounded-xl shadow-[0_6px_0_#166534] active:translate-y-[6px] transition-all text-2xl w-full">
+                        🛵 Main Sendiri (Petualangan)
+                    </button>
+                    <button onclick="window.switchMenu('menu-role')" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-10 rounded-xl shadow-[0_6px_0_#1e3a8a] active:translate-y-[6px] transition-all text-2xl w-full">
+                        🌐 Multiplayer (Arena Kelas)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROLE MENU (Multiplayer) -->
+        <div id="menu-role" class="absolute inset-0 bg-blue-600 flex flex-col items-center justify-center hidden pointer-events-auto">
+            <div class="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-md border-4 border-blue-400 w-full">
+                <h2 class="text-3xl text-blue-700 font-title mb-6">Pilih Peranmu</h2>
+                <div class="flex flex-col gap-4">
+                    <button onclick="window.switchMenu('menu-admin-setup')" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-6 rounded-xl shadow-[0_4px_0_#581c87] active:translate-y-[4px] transition-all text-xl">
+                        👨‍🏫 Saya Guru (Buat Room)
+                    </button>
+                    <button onclick="window.switchMenu('menu-player-join')" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-xl shadow-[0_4px_0_#a16207] active:translate-y-[4px] transition-all text-xl">
+                        👦 Saya Siswa (Gabung Room)
+                    </button>
+                    <button onclick="window.switchMenu('menu-main')" class="mt-4 text-gray-500 hover:text-gray-700 font-bold underline">Kembali</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADMIN SETUP MENU -->
+        <div id="menu-admin-setup" class="absolute inset-0 bg-purple-600 flex flex-col items-center justify-center hidden pointer-events-auto">
+            <div class="bg-white p-8 rounded-3xl shadow-2xl text-center max-w-md border-4 border-purple-400 w-full">
+                <h2 class="text-3xl text-purple-700 font-title mb-6">Pengaturan Room</h2>
+                <div class="mb-6 text-left">
+                    <label class="block text-gray-700 font-bold mb-2">Batas Waktu Permainan (Menit):</label>
+                    <input type="number" id="admin-time-input" value="5" min="1" max="60" class="w-full px-4 py-3 rounded-lg border-2 border-purple-300 focus:outline-none focus:border-purple-500 text-xl font-bold text-center">
+                </div>
+                <button id="btn-create-room" onclick="window.createAdminRoom()" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-xl shadow-[0_4px_0_#581c87] active:translate-y-[4px] transition-all text-xl w-full">
+                    Buat Room Sekarang
+                </button>
+                <button onclick="window.switchMenu('menu-role')" class="mt-6 text-gray-500 hover:text-gray-700 font-bold underline">Batal</button>
+            </div>
+        </div>
+
+        <!-- ADMIN LOBBY & DASHBOARD -->
+        <div id="menu-admin-dashboard" class="absolute inset-0 bg-slate-800 flex flex-col items-center p-8 hidden pointer-events-auto overflow-hidden">
+            <div class="w-full max-w-5xl bg-white rounded-2xl shadow-2xl flex flex-col h-full border-4 border-slate-600">
+                <!-- Header -->
+                <div class="bg-slate-100 p-6 rounded-t-xl border-b-2 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-3xl font-title text-slate-800">Dashboard Guru</h2>
+                        <p class="text-slate-500 font-bold mt-1">Berikan kode ini kepada siswa untuk bergabung:</p>
+                        <div class="text-6xl font-black text-purple-600 tracking-widest mt-2" id="display-room-code">----</div>
+                    </div>
+                    <div class="text-right">
+                        <div id="admin-timer-display" class="text-4xl font-title text-red-500 mb-2">Menunggu...</div>
+                        <button id="btn-admin-start" onclick="window.startMultiplayerGame()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-xl shadow-[0_4px_0_#166534] active:translate-y-[4px] transition-all text-xl">
+                            Mulai Game!
+                        </button>
+                        <button onclick="window.closeRoom()" class="ml-2 bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-xl shadow-[0_4px_0_#991b1b] active:translate-y-[4px] transition-all text-xl">
+                            Tutup
+                        </button>
+                    </div>
+                </div>
+                <!-- Leaderboard -->
+                <div class="flex-1 p-6 overflow-y-auto custom-scrollbar bg-slate-50">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-200 text-slate-700">
+                                <th class="p-4 font-title text-xl rounded-tl-lg">Peringkat</th>
+                                <th class="p-4 font-title text-xl">Nama Siswa</th>
+                                <th class="p-4 font-title text-xl text-center">Paket Diantar (Skor)</th>
+                                <th class="p-4 font-title text-xl text-center rounded-tr-lg">Sisa HP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-leaderboard" class="text-lg font-bold text-slate-600 divide-y divide-slate-200">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLAYER JOIN MENU -->
+        <div id="menu-player-join" class="absolute inset-0 bg-yellow-400 flex flex-col items-center justify-center hidden pointer-events-auto">
+            <div class="bg-white p-8 rounded-3xl shadow-2xl text-center max-w-md border-4 border-yellow-500 w-full">
+                <h2 class="text-3xl text-yellow-700 font-title mb-6">Gabung ke Kelas</h2>
+                <div class="mb-4 text-left">
+                    <label class="block text-gray-700 font-bold mb-2">Nama Panggilan:</label>
+                    <input type="text" id="player-name-input" placeholder="Misal: Budi" class="w-full px-4 py-3 rounded-lg border-2 border-yellow-300 focus:outline-none focus:border-yellow-500 text-xl font-bold">
+                </div>
+                <div class="mb-6 text-left">
+                    <label class="block text-gray-700 font-bold mb-2">Kode Room (Dari Guru):</label>
+                    <input type="text" id="player-code-input" placeholder="4 Digit Kode" maxlength="4" class="w-full px-4 py-3 rounded-lg border-2 border-yellow-300 focus:outline-none focus:border-yellow-500 text-3xl font-black text-center tracking-widest uppercase">
+                </div>
+                <button id="btn-join-room" onclick="window.joinAdminRoom()" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-8 rounded-xl shadow-[0_4px_0_#a16207] active:translate-y-[4px] transition-all text-xl w-full">
+                    Masuk Ruang Tunggu
+                </button>
+                <button onclick="window.switchMenu('menu-role')" class="mt-6 text-gray-500 hover:text-gray-700 font-bold underline">Batal</button>
+            </div>
+        </div>
+
+        <!-- PLAYER WAITING LOBBY -->
+        <div id="menu-player-waiting" class="absolute inset-0 bg-blue-500 flex flex-col items-center justify-center hidden pointer-events-auto">
+            <div class="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-md border-4 border-blue-300">
+                <div class="text-6xl mb-4 animate-bounce">⏳</div>
+                <h2 class="text-3xl text-blue-700 font-title mb-2">Berhasil Masuk!</h2>
+                <p class="text-xl text-gray-600 font-bold">Menunggu Guru memulai permainan...</p>
+                <p class="mt-4 text-sm text-gray-400">Siapkan jarimu di tombol W A S D / Panah!</p>
+            </div>
+        </div>
+
+        <!-- GAME OVER SCREEN -->
+        <div id="game-over" class="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-500 pointer-events-auto">
+            <div class="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-md border-4 border-red-500">
+                <h1 id="game-over-title" class="text-4xl text-red-600 mb-4 drop-shadow-md font-title">Permainan Selesai!</h1>
+                <p id="final-score-text" class="text-3xl text-gray-700 font-bold mb-8">Total Paket: 0</p>
+                <button onclick="window.returnToMenu()" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl shadow-[0_6px_0_#c2410c] active:translate-y-[6px] transition-all text-xl">
+                    Kembali ke Menu
+                </button>
+            </div>
+        </div>
+
+    </div> <!-- END UI LAYER -->
+
+    <!-- HUD / UI IN-GAME -->
+    <div id="hud" class="fixed inset-0 pointer-events-none z-10 hidden flex-col justify-between p-6">
+        <div class="flex justify-between items-start w-full">
+            <div class="bg-orange-500 text-white px-6 py-3 rounded-2xl shadow-lg border-4 border-orange-200 text-xl font-bold flex flex-col gap-1">
+                <span>📦 Paket: <span id="score-display" class="text-yellow-300">0</span></span>
+                <span>❤️ HP: <span id="hp-display" class="text-red-200">3</span></span>
+                <span id="player-timer-container" class="hidden text-blue-100 border-t border-orange-400 mt-1 pt-1">⏳ Sisa: <span id="player-timer-display">--:--</span></span>
+            </div>
+            
+            <div id="mission-board" class="bg-yellow-100 text-gray-800 px-8 py-5 rounded-bl-3xl rounded-tr-3xl shadow-2xl border-4 border-dashed border-yellow-400 text-center animate-pop">
+                <p class="text-sm font-bold text-orange-600 uppercase tracking-widest mb-1">Alamat Tujuan:</p>
+                <p id="question-text" class="text-4xl font-title text-slate-800">Menunggu Pesanan...</p>
+            </div>
+            <div class="w-32"></div>
+        </div>
+    </div>
+
+    <!-- Notifikasi Sukses/Gagal -->
+    <div id="toast" class="toast font-title tracking-wide">Kerja Bagus!</div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- KODE GAME & FIREBASE MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        /** * ==========================================
+         * 1. SETUP FIREBASE & STATE MULTIPLAYER
+         * ==========================================
+         */
+        let app, auth, db, currentUser;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'kurir-metrik-id';
+        const basePath = `artifacts/${appId}/public/data/rooms`;
+        
+        let isMultiplayer = false;
+        let isAdmin = false;
+        let currentRoomCode = null;
+        let myPlayerId = null;
+        let gameEndTime = 0;
+        
+        let unsubRoom = null;
+        let unsubPlayers = null;
+        let adminTimerInterval = null;
+
+        const initFirebase = async () => {
+            try {
+                if (typeof __firebase_config === 'undefined') {
+                    console.warn("Firebase config tidak ditemukan. Multiplayer mungkin gagal berjalan.");
+                    return;
+                }
+                const firebaseConfig = JSON.parse(__firebase_config);
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if(user) currentUser = user;
+                });
+            } catch (err) {
+                console.error("Firebase init failed:", err);
+            }
+        };
+        initFirebase(); // Eksekusi saat load
+
+        /** * ==========================================
+         * 2. LOGIKA GAME CANVAS (OPEN WORLD)
+         * ==========================================
+         */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const WORLD_SIZE = 4000;
+        
+        let isGameRunning = false;
+        let animationId;
+        let keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+        let player;
+        let houses = [];
+        let activeHouses = [];
+        let currentQuestion = null;
+        let particles = [];
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const lengthUnits = ['mm', 'cm', 'dm', 'm', 'dam', 'hm', 'km'];
+        function generateMathQuestion() {
+            let fromIdx = Math.floor(Math.random() * lengthUnits.length);
+            let toIdx = Math.floor(Math.random() * lengthUnits.length);
+            while(fromIdx === toIdx) { toIdx = Math.floor(Math.random() * lengthUnits.length); }
+
+            let baseValue = Math.floor(Math.random() * 20) + 1;
+            let diff = fromIdx - toIdx; 
+            let multiplier = Math.pow(10, diff);
+            
+            let correctAnswer = parseFloat((baseValue * multiplier).toPrecision(10));
+            let wrong1 = parseFloat((baseValue * Math.pow(10, diff + 1)).toPrecision(10));
+            let wrong2 = parseFloat((baseValue * Math.pow(10, diff - 1)).toPrecision(10));
+            if (wrong1 === correctAnswer) wrong1 = parseFloat((baseValue * Math.pow(10, diff + 2)).toPrecision(10));
+
+            let answers = [correctAnswer, wrong1, wrong2];
+            answers.sort(() => Math.random() - 0.5);
+
+            return {
+                text: `${baseValue} ${lengthUnits[fromIdx]} = ... ${lengthUnits[toIdx]}?`,
+                answers: answers,
+                correctAnswer: correctAnswer
+            };
+        }
+
+        class Player {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.width = 40; this.height = 60;
+                this.speed = 7; this.score = 0; this.hp = 3;
+                this.angle = 0;
+            }
+            update() {
+                let dx = 0; let dy = 0;
+                if (keys.w || keys.ArrowUp) dy -= 1;
+                if (keys.s || keys.ArrowDown) dy += 1;
+                if (keys.a || keys.ArrowLeft) dx -= 1;
+                if (keys.d || keys.ArrowRight) dx += 1;
+
+                if (dx !== 0 && dy !== 0) {
+                    let length = Math.sqrt(dx*dx + dy*dy);
+                    dx /= length; dy /= length;
+                }
+
+                this.x += dx * this.speed;
+                this.y += dy * this.speed;
+                if(dx !== 0 || dy !== 0) this.angle = Math.atan2(dy, dx);
+
+                this.x = Math.max(this.width/2, Math.min(WORLD_SIZE - this.width/2, this.x));
+                this.y = Math.max(this.height/2, Math.min(WORLD_SIZE - this.height/2, this.y));
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+                ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.roundRect(-20, -12, 40, 24, 8); ctx.fill();
+                ctx.fillStyle = '#fbbf24'; ctx.fillRect(-22, -10, 16, 20);
+                ctx.fillStyle = '#b45309'; ctx.fillRect(-16, -10, 4, 20);
+                ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(5, 0, 10, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#cbd5e1'; ctx.fillRect(10, -14, 6, 28);
+                ctx.restore();
+            }
+        }
+
+        class House {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.width = 120; this.height = 120;
+                this.color = ['#3b82f6', '#ef4444', '#10b981', '#8b5cf6'][Math.floor(Math.random()*4)];
+                this.isActive = false; this.answerValue = null;
+                this.dropZoneX = this.x + this.width / 2;
+                this.dropZoneY = this.y + this.height + 40;
+                this.dropRadius = 35;
+            }
+            draw() {
+                ctx.fillStyle = '#94a3b8'; ctx.fillRect(this.x - 10, this.y - 10, this.width + 20, this.height + 60);
+                ctx.fillStyle = this.color; ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.fillStyle = '#334155'; ctx.beginPath();
+                ctx.moveTo(this.x - 10, this.y + 30); ctx.lineTo(this.x + this.width / 2, this.y - 30);
+                ctx.lineTo(this.x + this.width + 10, this.y + 30); ctx.fill();
+
+                if (this.isActive && this.answerValue !== null) {
+                    ctx.beginPath(); ctx.arc(this.dropZoneX, this.dropZoneY, this.dropRadius, 0, Math.PI*2);
+                    ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; ctx.fill();
+                    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 4; ctx.setLineDash([10, 5]); ctx.stroke(); ctx.setLineDash([]);
+
+                    ctx.fillStyle = 'white'; ctx.fillRect(this.x + 10, this.y - 60, this.width - 20, 40);
+                    ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 3; ctx.strokeRect(this.x + 10, this.y - 60, this.width - 20, 40);
+                    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 24px Nunito'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(this.answerValue, this.x + this.width/2, this.y - 40);
+                } else {
+                    ctx.fillStyle = '#cbd5e1'; ctx.fillRect(this.x + 40, this.y - 20, 40, 20);
+                }
+            }
+            checkCollision(px, py) {
+                if(!this.isActive) return false;
+                let dx = px - this.dropZoneX; let dy = py - this.dropZoneY;
+                return Math.sqrt(dx*dx + dy*dy) < this.dropRadius + 20;
+            }
+        }
+
+        function generateCity() {
+            houses = [];
+            for (let x = 200; x < WORLD_SIZE - 200; x += 350) {
+                for (let y = 200; y < WORLD_SIZE - 200; y += 350) {
+                    if(Math.random() > 0.3) houses.push(new House(x + (Math.random()*50 - 25), y + (Math.random()*50 - 25)));
+                }
+            }
+        }
+
+        function assignNewMission() {
+            currentQuestion = generateMathQuestion();
+            const mb = document.getElementById('mission-board');
+            mb.classList.remove('animate-pop'); void mb.offsetWidth; mb.classList.add('animate-pop');
+            document.getElementById('question-text').innerText = currentQuestion.text;
+
+            houses.forEach(h => { h.isActive = false; h.answerValue = null; });
+            let validHouses = houses.filter(h => {
+                let dist = Math.hypot(h.x - player.x, h.y - player.y);
+                return dist > 300 && dist < 1200;
+            });
+            if(validHouses.length < 3) validHouses = houses.slice();
+            validHouses.sort(() => 0.5 - Math.random());
+            activeHouses = validHouses.slice(0, 3);
+            for(let i=0; i<3; i++) {
+                activeHouses[i].isActive = true;
+                activeHouses[i].answerValue = currentQuestion.answers[i];
+            }
+        }
+
+        window.addEventListener('keydown', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+        function updateHUD() {
+            document.getElementById('score-display').innerText = player.score;
+            document.getElementById('hp-display').innerText = player.hp;
+            
+            // Sync to Firebase if Multiplayer
+            if (isMultiplayer && !isAdmin && currentUser && currentRoomCode) {
+                const playerRef = doc(db, basePath, currentRoomCode, 'players', currentUser.uid);
+                updateDoc(playerRef, { score: player.score, hp: player.hp }).catch(e => console.log("Sync delay", e));
+            }
+        }
+
+        function showToast(message, type) {
+            const toastEl = document.getElementById('toast');
+            toastEl.innerText = message;
+            toastEl.className = `toast show ${type === 'success' ? 'toast-success' : 'toast-error'}`;
+            setTimeout(() => { toastEl.classList.remove('show'); }, 2000);
+        }
+
+        function drawEnvironment() {
+            ctx.fillStyle = '#22c55e'; ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
+            ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 2;
+            for(let i = 0; i < WORLD_SIZE; i += 100) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(WORLD_SIZE, i); ctx.stroke();
+            }
+            ctx.fillStyle = '#475569';
+            for (let i = 200; i < WORLD_SIZE; i += 350) {
+                ctx.fillRect(0, i + 120, WORLD_SIZE, 80); ctx.fillRect(i - 40, 0, 80, WORLD_SIZE);
+            }
+            ctx.strokeStyle = '#facc15'; ctx.lineWidth = 4; ctx.setLineDash([20, 20]);
+            for (let i = 200; i < WORLD_SIZE; i += 350) {
+                ctx.beginPath(); ctx.moveTo(0, i + 160); ctx.lineTo(WORLD_SIZE, i + 160); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, WORLD_SIZE); ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        function formatTime(ms) {
+            if(ms <= 0) return "00:00";
+            let totalSeconds = Math.floor(ms / 1000);
+            let m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            let s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+
+            // Timer check for Multiplayer
+            if (isMultiplayer && gameEndTime > 0) {
+                let timeLeft = gameEndTime - Date.now();
+                document.getElementById('player-timer-display').innerText = formatTime(timeLeft);
+                if (timeLeft <= 0) {
+                    endGameClient("Waktu Habis!");
+                    return;
+                }
+            }
+
+            player.update();
+
+            activeHouses.forEach(house => {
+                if(house.checkCollision(player.x, player.y)) {
+                    if(house.answerValue === currentQuestion.correctAnswer) {
+                        player.score++; showToast("Pesanan Tepat! +1", "success");
+                        assignNewMission();
+                    } else {
+                        player.hp--; showToast("Salah Alamat! -1 HP", "error");
+                        if(player.hp <= 0) {
+                            endGameClient("HP Habis!");
+                            return;
+                        } else {
+                            assignNewMission();
+                        }
+                    }
+                    updateHUD();
+                }
+            });
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2 - player.x, canvas.height / 2 - player.y);
+
+            drawEnvironment();
+            houses.forEach(h => {
+                if(h.x > player.x - canvas.width && h.x < player.x + canvas.width &&
+                   h.y > player.y - canvas.height && h.y < player.y + canvas.height) h.draw();
+            });
+
+            activeHouses.forEach(house => {
+                let dx = house.dropZoneX - player.x; let dy = house.dropZoneY - player.y;
+                if (Math.sqrt(dx*dx + dy*dy) > 200) {
+                    let angle = Math.atan2(dy, dx);
+                    ctx.save(); ctx.translate(player.x + Math.cos(angle)*150, player.y + Math.sin(angle)*150); ctx.rotate(angle);
+                    ctx.fillStyle = 'rgba(250, 204, 21, 0.8)'; ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-10, 10); ctx.lineTo(-10, -10); ctx.fill();
+                    ctx.restore();
+                }
+            });
+
+            player.draw();
+            ctx.restore();
+
+            if(isGameRunning) animationId = requestAnimationFrame(gameLoop);
+        }
+
+        /** * ==========================================
+         * 3. UI & MULTIPLAYER MANAGER
+         * ==========================================
+         */
+        window.switchMenu = (menuId) => {
+            const menus = ['menu-main', 'menu-role', 'menu-admin-setup', 'menu-admin-dashboard', 'menu-player-join', 'menu-player-waiting', 'game-over'];
+            menus.forEach(m => {
+                const el = document.getElementById(m);
+                if(el) {
+                    el.classList.add('hidden');
+                    el.classList.remove('opacity-0'); // reset opacity just in case
+                }
+            });
+            if(menuId) document.getElementById(menuId).classList.remove('hidden');
+        };
+
+        // Mulai Game Petualangan Biasa (Offline/Single)
+        window.startSinglePlayer = () => {
+            isMultiplayer = false;
+            isAdmin = false;
+            
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('hud').classList.add('flex');
+            document.getElementById('player-timer-container').classList.add('hidden');
+            
+            player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2);
+            generateCity();
+            updateHUD();
+            assignNewMission();
+            
+            isGameRunning = true;
+            gameLoop();
+        };
+
+        // --- FUNGSI ADMIN ---
+        window.createAdminRoom = async () => {
+            if(!currentUser) { alert("Sistem sedang memuat (Tunggu koneksi Firebase)..."); return; }
+            
+            const btn = document.getElementById('btn-create-room');
+            btn.innerText = "Membuat..."; btn.disabled = true;
+
+            const timeLimit = parseInt(document.getElementById('admin-time-input').value) || 5;
+            const code = Math.floor(1000 + Math.random() * 9000).toString();
+            
+            try {
+                // Buat Data Room
+                await setDoc(doc(db, basePath, code), {
+                    adminId: currentUser.uid,
+                    status: 'waiting', // waiting, playing, finished
+                    timeLimitMinutes: timeLimit,
+                    endTime: 0,
+                    createdAt: Date.now()
+                });
+
+                isAdmin = true;
+                currentRoomCode = code;
+                isMultiplayer = true;
+                
+                // Pindah ke UI Dashboard Admin
+                document.getElementById('display-room-code').innerText = code;
+                window.switchMenu('menu-admin-dashboard');
+
+                // Dengar perubahan pemain yang masuk
+                unsubPlayers = onSnapshot(collection(db, basePath, code, 'players'), (snapshot) => {
+                    const tbody = document.getElementById('admin-leaderboard');
+                    let playersData = [];
+                    snapshot.forEach(doc => playersData.push({ id: doc.id, ...doc.data() }));
+                    
+                    // Sortir berdasarkan skor tertinggi, lalu HP terbanyak
+                    playersData.sort((a,b) => b.score - a.score || b.hp - a.hp);
+                    
+                    tbody.innerHTML = '';
+                    playersData.forEach((p, index) => {
+                        let rowClass = p.hp <= 0 ? 'bg-red-50 text-red-700' : 'hover:bg-slate-100';
+                        tbody.innerHTML += `
+                            <tr class="border-b border-slate-200 transition-colors ${rowClass}">
+                                <td class="p-4 font-bold text-center">#${index + 1}</td>
+                                <td class="p-4">${p.name} ${p.hp <= 0 ? '(Mati)' : ''}</td>
+                                <td class="p-4 text-center text-orange-600 text-2xl">${p.score}</td>
+                                <td class="p-4 text-center text-red-500 text-xl">${'❤️'.repeat(Math.max(0, p.hp))}</td>
+                            </tr>
+                        `;
+                    });
+                }, (error) => console.error("Error fetching players:", error));
+
+            } catch (err) {
+                console.error("Gagal buat room", err);
+                alert("Gagal membuat room. Periksa koneksi internet.");
+            } finally {
+                btn.innerText = "Buat Room Sekarang"; btn.disabled = false;
+            }
+        };
+
+        window.startMultiplayerGame = async () => {
+            if(!isAdmin || !currentRoomCode) return;
+            
+            const timeLimit = parseInt(document.getElementById('admin-time-input').value) || 5;
+            const msEnd = Date.now() + (timeLimit * 60 * 1000);
+            
+            document.getElementById('btn-admin-start').classList.add('hidden'); // Sembunyikan tombol mulai
+            
+            try {
+                // Update Firebase agar semua player tahu game mulai
+                await updateDoc(doc(db, basePath, currentRoomCode), {
+                    status: 'playing',
+                    endTime: msEnd
+                });
+
+                // Mulai Timer di Layar Admin
+                if(adminTimerInterval) clearInterval(adminTimerInterval);
+                adminTimerInterval = setInterval(() => {
+                    let left = msEnd - Date.now();
+                    if(left <= 0) {
+                        document.getElementById('admin-timer-display').innerText = "Permainan Selesai!";
+                        clearInterval(adminTimerInterval);
+                        // Optional: Otomatis set doc status ke finished
+                        updateDoc(doc(db, basePath, currentRoomCode), { status: 'finished' }).catch(e=>e);
+                    } else {
+                        document.getElementById('admin-timer-display').innerText = `Sisa: ${formatTime(left)}`;
+                    }
+                }, 1000);
+            } catch (err) {
+                console.error("Gagal memulai game", err);
+            }
+        };
+
+        window.closeRoom = () => {
+            if(unsubPlayers) unsubPlayers();
+            if(unsubRoom) unsubRoom();
+            if(adminTimerInterval) clearInterval(adminTimerInterval);
+            isAdmin = false;
+            currentRoomCode = null;
+            isMultiplayer = false;
+            window.switchMenu('menu-main');
+        };
+
+        // --- FUNGSI SISWA (PLAYER) ---
+        window.joinAdminRoom = async () => {
+            if(!currentUser) { alert("Sistem sedang memuat..."); return; }
+            const name = document.getElementById('player-name-input').value.trim();
+            const code = document.getElementById('player-code-input').value.trim().toUpperCase();
+            const btn = document.getElementById('btn-join-room');
+            
+            if(!name || code.length !== 4) { alert("Mohon isi Nama dan 4 Digit Kode Room!"); return; }
+            
+            btn.innerText = "Mencari..."; btn.disabled = true;
+
+            try {
+                // Cek apakah room ada
+                const roomSnap = await getDoc(doc(db, basePath, code));
+                if (!roomSnap.exists()) {
+                    alert("Kode Room tidak ditemukan!");
+                    btn.innerText = "Masuk Ruang Tunggu"; btn.disabled = false;
+                    return;
+                }
+
+                if (roomSnap.data().status !== 'waiting') {
+                    alert("Maaf, Game sudah dimulai atau selesai.");
+                    btn.innerText = "Masuk Ruang Tunggu"; btn.disabled = false;
+                    return;
+                }
+
+                // Daftarkan Diri
+                await setDoc(doc(db, basePath, code, 'players', currentUser.uid), {
+                    name: name,
+                    score: 0,
+                    hp: 3,
+                    joinedAt: Date.now()
+                });
+
+                isMultiplayer = true;
+                isAdmin = false;
+                currentRoomCode = code;
+                window.switchMenu('menu-player-waiting');
+
+                // Dengar instruksi "Mulai" dari Admin
+                unsubRoom = onSnapshot(doc(db, basePath, code), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.status === 'playing' && !isGameRunning) {
+                            // WAKTU MULAI!
+                            gameEndTime = data.endTime;
+                            startClientGameForMultiplayer();
+                        } else if (data.status === 'finished' && isGameRunning) {
+                            endGameClient("Game Ditutup Admin");
+                        }
+                    }
+                }, (err) => console.error(err));
+
+            } catch (err) {
+                console.error("Gagal gabung", err);
+                alert("Terjadi kesalahan.");
+                btn.innerText = "Masuk Ruang Tunggu"; btn.disabled = false;
+            }
+        };
+
+        function startClientGameForMultiplayer() {
+            document.getElementById('ui-layer').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('hud').classList.add('flex');
+            document.getElementById('player-timer-container').classList.remove('hidden');
+            
+            player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2);
+            generateCity();
+            updateHUD();
+            assignNewMission();
+            
+            isGameRunning = true;
+            gameLoop();
+        }
+
+        // --- SISTEM GAME OVER ---
+        function endGameClient(reasonTitle) {
+            isGameRunning = false;
+            cancelAnimationFrame(animationId);
+            
+            document.getElementById('game-over-title').innerText = reasonTitle || "Permainan Selesai!";
+            document.getElementById('final-score-text').innerText = `Total Paket Diantar: ${player.score}`;
+            
+            document.getElementById('hud').classList.remove('flex');
+            document.getElementById('hud').classList.add('hidden');
+            
+            document.getElementById('ui-layer').classList.remove('hidden');
+            window.switchMenu('game-over');
+            setTimeout(() => { document.getElementById('game-over').classList.remove('opacity-0'); }, 10);
+
+            // Sync kematian/selesai ke DB
+            if(isMultiplayer && !isAdmin && currentUser && currentRoomCode) {
+                updateDoc(doc(db, basePath, currentRoomCode, 'players', currentUser.uid), { hp: 0 }).catch(e=>e);
+                if(unsubRoom) unsubRoom(); // Berhenti mendengarkan room
+            }
+        }
+
+        window.returnToMenu = () => {
+            isMultiplayer = false;
+            currentRoomCode = null;
+            document.getElementById('game-over').classList.add('opacity-0');
+            setTimeout(() => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                window.switchMenu('menu-main');
+            }, 500);
+        };
+    </script>
+</body>
+</html>
